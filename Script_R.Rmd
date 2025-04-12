@@ -1,0 +1,342 @@
+---
+title: "Análise Fatorial Exploratória - Escala"
+author: "Denilson Junio Marques Soares"
+date: '2023-03-22'
+output: html_document
+---
+# Análises da Escala de Atitudes perante as avaliações externas aplicadas em larga Escala (EAAE)
+
+##### Carregamento de Pacotes
+
+```{r pacotes, message=FALSE, warning=FALSE}
+library(haven)
+library(psych)
+library(EFAtools)
+library(EFA.MRFA)
+library(readxl)
+library(lavaan)
+require(ggplot2)
+library(reshape2)
+library(Rcsdp)
+library(bootnet)
+library(qgraph)
+```
+&nbsp;
+
+
+### Leitura dos dados
+
+
+&nbsp;
+
+
+```{r, warning=FALSE, message=FALSE}
+setwd("C:\\Users\\UFES\\Desktop\\escala AFE") 
+Escala <- read_excel("C:\\Users\\UFES\\Desktop\\paideia\\dados_escala.xlsx")
+dados=Escala[, 2:31]
+dados <- zap_labels(dados)
+```
+
+
+&nbsp;
+
+
+##### Antes de se iniciar a análise fatorial, é necessário verificar se os dados são adequados para esse tipo de modelo. Nessa etapa, alguns pontos são importantes: amostra, padrão de correlações, Teste de Bartlett e Teste de Kaiser-Meyer-Olkim. 
+
+
+
+&nbsp;
+
+
+#### Tamanho da Amostra
+
+
+
+
+&nbsp;
+
+
+##### Hair et al. (2005) sugerem, como regra geral, ter pelo menos cinco vezes mais observações do que o número de variáveis analisadas, mas sendo ideal uma proporção de dez para um
+
+
+
+&nbsp;
+
+
+
+```{r, warning=FALSE, message=FALSE}
+dim(dados)
+# Há 367 respondentes e 30 itens, indicando que conseguimos realizar a Análise Fatorial
+```
+
+
+&nbsp;
+
+
+
+
+#### Teste de Barlett
+
+
+&nbsp;
+
+
+#####  O Teste de Bartlett possui como hipótese nula a ausência de algum tipo de associação entre as variáveis, logo elas não poderiam, de fato, representar conjuntamente um ou mais traços latentes. Portanto, é esperado a rejeição dessa hipótese nula, ou seja, o Teste de Bartlett deve ser estatisticamente significante (p < 0,05).
+
+
+
+&nbsp;
+
+
+```{r, warning=FALSE, message=FALSE}
+correlacao<-polychoric(dados)
+cortest.bartlett(correlacao$rho,n=nrow(dados))
+#  O resultado indica que a matriz de correlações é diferente da identidade, indicando qua adequação da base de dados para a AF
+```
+
+
+&nbsp;
+
+
+
+#### Teste de Kaiser-Meyer-Olkim (KMO) 
+
+
+&nbsp;
+
+
+##### Essa medida, que varia entre 0 e 1, representa a proporção da variância das variáveis que pode ser explicada pelos fatores ou traços latentes. Quanto mais próximo esse valor estiver de 1, mais adequados os dados estão para se ajustar uma AF.
+
+
+
+&nbsp;
+
+
+```{r, warning=FALSE, message=FALSE}
+KMO(correlacao$rho)
+#  Os resultados mostram que tanto o KMO global (Overall MSA = 0,936) quanto o KMO de cada um dos itens (MSA for each item) foram bem altos, todos superiores a 0,85. 
+```
+
+
+
+&nbsp;
+
+
+
+#### Determinação do número de fatores 
+
+
+&nbsp;
+
+
+#####  A definição do número de fatores que serão extraídos é uma tarefa complexa. Não existe um único critério consensual para determinar o número de fatores. Nesta pesquisa, utilizaremos a Análise Paralela para a determinação do número de fatores
+
+
+
+&nbsp;
+
+
+
+```{r, warning=FALSE, message=FALSE}
+fa.parallel(dados, fm="pa", fa="fa", main = "Scree Plots da Análise Paralela", n.iter=500, show.legend = TRUE)
+#No nosso caso, o número de fatores recomendados é 3
+```
+
+
+&nbsp;
+
+
+```{r, warning=FALSE, message=FALSE}
+hull_mrp <- EFAtools::HULL(x = dados, eigen_type = "EFA", n_fac_theor = 3, method = "PAF")
+hull_mrp
+#O método de Hull também sugere 3 fatores
+```
+
+
+&nbsp;
+
+
+#### Extração das cargas fatoriais e rotação dos fatores
+
+
+&nbsp;
+
+
+#####  Utilizaremos a função fa() do pacote psych e o método da máxima verossimilhança, que na função é definido como ‘ml’.Como os fatores estão correlacionados, é indicado a rotação oblíqua.
+
+
+
+&nbsp;
+
+
+
+```{r, warning=FALSE, message=FALSE}
+fa_com_rotacao <- fa(correlacao$rho,3,rotate="oblimin", fm="ml")
+```
+
+
+
+&nbsp;
+
+
+
+```{r, warning=FALSE, message=FALSE}
+print(fa_com_rotacao)
+```
+
+
+&nbsp;
+
+
+
+
+```{r, warning=FALSE, message=FALSE, fig.width = 12, fig.height = 15}
+# Diagrama dos fatores
+fa.diagram(fa_com_rotacao)
+```
+
+
+
+&nbsp;
+
+
+
+### Análises com o pacote Lavan
+
+
+```{r, warning=FALSE, message=FALSE}
+modelo <- "
+efa('mrp')*f1 + 
+efa('mrp')*f2 + 
+efa('mrp')*f3  =~ Cog_1+Cog_2+Cog_3+Cog_4+Cog_5+Cog_6+Cog_7+Cog_8+Cog_9+Cog_10+Cog_11+Cog_12+
+Afe_1+Afe_2+Afe_3+Afe_4+Afe_5+Afe_6+Afe_7+Afe_8+
+Comp_1+Comp_2+Comp_3+Comp_4+Comp_5+Comp_6+Comp_7+Comp_8+Comp_9+Comp_10
+"
+```
+
+
+
+&nbsp;
+
+
+
+
+
+```{r, warning=FALSE, message=FALSE}
+# Para ajustar o modelo:
+efa_lavaan <- sem(modelo, 
+                  data=dados,
+                  ordered= names(dados), # Nome das variáveis ordinais
+                  estimator= "dwls",   # Estimador
+                  rotation= "oblimin")  # Rotação
+```
+
+
+
+&nbsp;
+
+
+### Thresholds
+
+
+
+&nbsp;
+
+
+
+```{r, warning=FALSE, message=FALSE}
+# Para extrair os Thresholds
+sample.th <- lavInspect(efa_lavaan, "sampstat")$th
+sample.th
+```
+
+
+
+
+&nbsp;
+
+
+### Fidedgnidade Composta
+
+
+&nbsp;
+
+
+
+```{r, warning=FALSE, message=FALSE}
+composite_reliability <- function(x, reduce=TRUE, cutoff= 0.3) {
+  stopifnot(is.vector(x))
+  cargas = abs(x)
+  if (isTRUE(reduce)){
+    cargas = cargas[cargas > 0.3] 
+  } else{
+    cargas = cargas
+  }
+  e = 1 - cargas^2
+  cr= sum(cargas)^2 / (sum(cargas)^2 + sum(e))
+  return(cr)
+}
+```
+
+
+&nbsp;
+
+
+
+```{r, warning=FALSE, message=FALSE}
+# Calculando a fidedignidade para todos os fatores
+# Quando objeto é da classe lavaan 
+cargas_lavaan <- inspect(object = efa_lavaan, what = "std")$lambda
+apply(cargas_lavaan, 2, composite_reliability)
+```
+
+
+
+&nbsp;
+
+
+### Escores Fatoriais
+
+
+&nbsp;
+
+
+
+```{r, warning=FALSE, message=FALSE}
+efa_psych <- fa(r = dados, cor = "poly", 
+         nfactors = 3, fm = "minrank", scores = "tenBerge", 
+         rotate= "oblimin")
+soma = efa_psych$scores[,1]+efa_psych$scores[,2]+efa_psych$scores[,3]
+hist(soma)
+```
+
+
+&nbsp;
+
+
+### Redes
+
+
+&nbsp;
+
+
+```{r, warning=FALSE, message=FALSE}
+cor_dados <- cor(dados)
+
+qgraph(cor_dados, layout="spring", edge.color="black",
+              groups = list("Cognitivo" = 1:12,
+                     "Afetivo" = 13:20,
+                     "Comportamental" = 21:30),
+              color = c("lightgray",
+                     "white",
+                     "darkgray"))
+```      
+
+
+
+
+
+
+
+
+
